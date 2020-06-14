@@ -9,11 +9,13 @@ import os
 import re
 import sys
 import warnings
+from pathlib import Path
 
 import pytest
 
 from pytest_doctestplus.utils import ModuleChecker
 from .output_checker import FIX, IGNORE_WARNINGS, OutputChecker, REMOTE_DATA
+from .doctest_runner import DocTestRunner as _DocTestRunner
 
 try:
     from textwrap import indent
@@ -70,6 +72,7 @@ def pytest_addoption(parser):
                         "Options accepted are 'txt', 'tex', and 'rst'. "
                         "This is no longer recommended, use --doctest-glob instead."
                      ))
+    parser.addoption("--doctest-fixup", action="store_true")
 
     # Defaults to `atol` parameter from `numpy.allclose`.
     parser.addoption("--doctest-plus-atol", action="store",
@@ -89,7 +92,7 @@ def pytest_addoption(parser):
                   "This is no longer recommended, use --doctest-glob instead.")
 
     parser.addini("doctest_optionflags", "option flags for doctests",
-                  type="args", default=["ELLIPSIS", "NORMALIZE_WHITESPACE"],)
+                  type="args", default=(),)
 
     parser.addini("doctest_plus", "enable running doctests with additional "
                                   "features not found in the normal doctest plugin")
@@ -151,6 +154,11 @@ def pytest_configure(config):
     if use_rst:
         config.option.doctestglob.append('*.{}'.format(file_ext))
 
+    fixup = config.option.doctest_fixup
+    Runner = doctest.DebugRunner
+    if fixup:
+        Runner = _DocTestRunner
+
     # override default comment characters
     ext_comment_pairs = [pair.split('=') for pair in config.getini('text_file_comment_chars')]
     for ext, chars in ext_comment_pairs:
@@ -183,8 +191,7 @@ def pytest_configure(config):
 
             # uses internal doctest module parsing mechanism
             finder = DocTestFinderPlus()
-            runner = doctest.DebugRunner(
-                verbose=False, optionflags=options, checker=OutputChecker())
+            runner = Runner(verbose=False, optionflags=options, checker=OutputChecker())
 
             for test in finder.find(module):
                 if test.examples:  # skip empty doctests
@@ -229,8 +236,7 @@ def pytest_configure(config):
 
             optionflags = get_optionflags(self) | FIX
 
-            runner = doctest.DebugRunner(
-                verbose=False, optionflags=optionflags, checker=OutputChecker())
+            runner = Runner(verbose=False, optionflags=optionflags, checker=OutputChecker())
 
             parser = DocTestParserPlus()
             test = parser.get_doctest(text, globs, name, filename, 0)
